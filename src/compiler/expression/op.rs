@@ -3,7 +3,7 @@ use std::fmt;
 use crate::compiler::codes;
 use crate::compiler::state::{TypeInfo, TypeState};
 use crate::compiler::{
-    Context, Expression, TypeDef,
+    Context, Expression, ExpressionError, TypeDef,
     expression::{self, Expr, Resolved},
     parser::{Node, ast},
     value::{ValueError, VrlValueArithmetic},
@@ -128,7 +128,15 @@ impl Expression for Op {
         use ast::Opcode::{Add, And, Div, Eq, Err, Ge, Gt, Le, Lt, Merge, Mul, Ne, Or, Sub};
 
         match self.opcode {
-            Err => return self.lhs.resolve(ctx).or_else(|_| self.rhs.resolve(ctx)),
+            Err => {
+                return match self.lhs.resolve(ctx) {
+                    std::result::Result::Err(
+                        error @ (ExpressionError::Interrupted | ExpressionError::Break { .. }),
+                    ) => std::result::Result::Err(error),
+                    std::result::Result::Err(_) => self.rhs.resolve(ctx),
+                    result => result,
+                };
+            }
             Or => {
                 return self
                     .lhs
@@ -512,18 +520,19 @@ mod tests {
 
     use super::*;
 
-    #[allow(clippy::needless_pass_by_value)]
     fn op(
         opcode: ast::Opcode,
-        lhs: impl TryInto<Literal> + fmt::Debug + Clone,
-        rhs: impl TryInto<Literal> + fmt::Debug + Clone,
+        lhs: impl TryInto<Literal> + fmt::Debug,
+        rhs: impl TryInto<Literal> + fmt::Debug,
     ) -> Op {
-        let Ok(lhs) = lhs.clone().try_into() else {
-            panic!("not a valid lhs expression: {lhs:?}")
+        let lhs_debug = format!("{lhs:?}");
+        let Ok(lhs) = lhs.try_into() else {
+            panic!("not a valid lhs expression: {lhs_debug}")
         };
 
-        let Ok(rhs) = rhs.clone().try_into() else {
-            panic!("not a valid rhs expression: {rhs:?}")
+        let rhs_debug = format!("{rhs:?}");
+        let Ok(rhs) = rhs.try_into() else {
+            panic!("not a valid rhs expression: {rhs_debug}")
         };
 
         Op {

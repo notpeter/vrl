@@ -93,10 +93,14 @@ impl DiagnosticMessage for ValueError {
 
 impl From<ValueError> for ExpressionError {
     fn from(err: ValueError) -> Self {
-        Self::Error {
-            message: err.message(),
-            labels: vec![],
-            notes: vec![],
+        match err {
+            ValueError::Or(ExpressionError::Interrupted) => Self::Interrupted,
+            ValueError::Or(err @ ExpressionError::Break { .. }) => err,
+            _ => Self::Error {
+                message: err.message(),
+                labels: vec![],
+                notes: vec![],
+            },
         }
     }
 }
